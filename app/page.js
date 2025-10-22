@@ -7,21 +7,19 @@ export default function TrackerPage() {
   const [currentWeight, setCurrentWeight] = useState(186);
   const [selectedDate, setSelectedDate] = useState('');
   const [allData, setAllData] = useState({});
+  const [showSaveMessage, setShowSaveMessage] = useState(false);
 
-  // Wait for client-side mount
   useEffect(() => {
     setMounted(true);
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
     
-    // Load from localStorage only on client
     try {
       const saved = localStorage.getItem('kostaTracker');
       if (saved) {
         const parsed = JSON.parse(saved);
         setAllData(parsed);
       } else {
-        // Initialize today if no data exists
         setAllData({
           [today]: createEmptyDay(186)
         });
@@ -31,7 +29,6 @@ export default function TrackerPage() {
     }
   }, []);
 
-  // Save to localStorage whenever data changes
   useEffect(() => {
     if (mounted && Object.keys(allData).length > 0) {
       try {
@@ -50,11 +47,12 @@ export default function TrackerPage() {
       workout: { completed: false, supplements: false },
       evening: { peptides: false, prepped: false, bedtime: false },
       weight: weight,
-      notes: ''
+      notes: '',
+      completed: false,
+      completedAt: null
     };
   }
 
-  // Don't render until mounted on client
   if (!mounted || !selectedDate) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
@@ -108,6 +106,23 @@ export default function TrackerPage() {
     });
   };
 
+  const completeDay = () => {
+    setAllData(prev => {
+      const currentDay = prev[selectedDate] || createEmptyDay(currentWeight);
+      return {
+        ...prev,
+        [selectedDate]: {
+          ...currentDay,
+          completed: true,
+          completedAt: new Date().toISOString()
+        }
+      };
+    });
+    
+    setShowSaveMessage(true);
+    setTimeout(() => setShowSaveMessage(false), 3000);
+  };
+
   const calculateScore = () => {
     const m = today.morning || {};
     const w = today.work || {};
@@ -148,8 +163,12 @@ export default function TrackerPage() {
 
   const scoreInfo = getScoreLevel(dailyScore);
 
+  const getCompletedDays = () => {
+    return Object.values(allData).filter(day => day.completed).length;
+  };
+
   const copyForGoogleSheets = () => {
-    const headers = ['Date', 'Weight', 'Daily Score', 'Notes'];
+    const headers = ['Date', 'Weight', 'Daily Score', 'Status', 'Notes'];
     const rows = Object.entries(allData).map(([date, data]) => {
       const m = data.morning || {};
       const w = data.work || {};
@@ -173,7 +192,8 @@ export default function TrackerPage() {
       if (e.prepped) score += 5;
       if (e.bedtime) score += 5;
 
-      return [date, data.weight, score, data.notes || ''].join('\t');
+      const status = data.completed ? 'Completed' : 'In Progress';
+      return [date, data.weight, score, status, data.notes || ''].join('\t');
     });
 
     const text = [headers.join('\t'), ...rows].join('\n');
@@ -197,6 +217,19 @@ export default function TrackerPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-4xl mx-auto">
+        {/* Success Message */}
+        {showSaveMessage && (
+          <div className="fixed top-4 right-4 bg-green-600 text-white px-6 py-4 rounded-lg shadow-xl z-50 animate-bounce">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">✅</span>
+              <div>
+                <div className="font-bold">Day Completed!</div>
+                <div className="text-sm">Great work today, Kosta!</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -237,6 +270,11 @@ export default function TrackerPage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none"
               />
+              {today.completed && (
+                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold">
+                  ✓ Completed
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -259,8 +297,9 @@ export default function TrackerPage() {
               <div className="text-lg mt-2 opacity-90">{scoreInfo.level}</div>
             </div>
             <div className="text-right">
-              <div className="text-sm opacity-90">Days Tracked</div>
-              <div className="text-3xl font-bold mt-1">{Object.keys(allData).length}</div>
+              <div className="text-sm opacity-90">Days Completed</div>
+              <div className="text-3xl font-bold mt-1">{getCompletedDays()}</div>
+              <div className="text-sm opacity-90 mt-1">of {Object.keys(allData).length} tracked</div>
             </div>
           </div>
         </div>
@@ -335,27 +374,65 @@ export default function TrackerPage() {
           <textarea
             value={today.notes || ''}
             onChange={(e) => updateNotes(e.target.value)}
-            placeholder="How did you feel today?"
+            placeholder="How did you feel today? Any wins or challenges?"
             className="w-full p-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none min-h-[100px]"
           />
+        </div>
+
+        {/* Complete Day Button */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Complete Your Day</h2>
+          {!today.completed ? (
+            <div>
+              <p className="text-gray-600 mb-4">
+                Once you&apos;ve checked off all your tasks, click the button below to mark this day as complete. 
+                You can always come back and edit it later!
+              </p>
+              <button
+                onClick={completeDay}
+                className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-colors font-bold text-lg shadow-lg flex items-center justify-center gap-3"
+              >
+                <span className="text-2xl">✓</span>
+                Complete Day ({dailyScore}/100 points)
+              </button>
+            </div>
+          ) : (
+            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-6 text-center">
+              <div className="text-5xl mb-3">🎉</div>
+              <div className="text-xl font-bold text-green-900 mb-2">Day Completed!</div>
+              <div className="text-green-700">
+                You scored {dailyScore}/100 points. Great work!
+              </div>
+              {today.completedAt && (
+                <div className="text-sm text-green-600 mt-2">
+                  Completed: {new Date(today.completedAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Export */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Export Data</h2>
-          <button
-            onClick={copyForGoogleSheets}
-            className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-semibold"
-          >
-            📋 Copy for Google Sheets
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={copyForGoogleSheets}
+              className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold"
+            >
+              📋 Copy for Google Sheets
+            </button>
+          </div>
+          <p className="text-sm text-gray-600 mt-3">
+            Export your data at any time. Completed days will show a &quot;Completed&quot; status in the export.
+          </p>
         </div>
 
         {/* Motivation */}
         <div className="bg-gradient-to-r from-orange-500 to-red-500 rounded-2xl shadow-xl p-6 text-white text-center mb-6">
           <div className="text-5xl mb-4">🎯</div>
           <h3 className="text-2xl font-bold mb-2">Remember Your Why</h3>
-          <p className="text-lg opacity-90">Show up, check the boxes, trust the process.</p>
+          <p className="text-lg opacity-90">Show up, check the boxes, hit that complete button.</p>
           <p className="mt-4 text-xl font-bold">
             {toGo > 0 ? `${toGo.toFixed(1)} lbs to go!` : 'TARGET REACHED! 🎉'}
           </p>
