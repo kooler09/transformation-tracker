@@ -3,77 +3,117 @@
 import { useState, useEffect } from 'react';
 
 export default function TrackerPage() {
+  const [mounted, setMounted] = useState(false);
   const [currentWeight, setCurrentWeight] = useState(186);
   const [selectedDate, setSelectedDate] = useState('');
   const [allData, setAllData] = useState({});
 
+  // Wait for client-side mount
   useEffect(() => {
+    setMounted(true);
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
     
-    // Load from localStorage
-    const saved = localStorage.getItem('kostaTracker');
-    if (saved) {
-      setAllData(JSON.parse(saved));
+    // Load from localStorage only on client
+    try {
+      const saved = localStorage.getItem('kostaTracker');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setAllData(parsed);
+      } else {
+        // Initialize today if no data exists
+        setAllData({
+          [today]: createEmptyDay(186)
+        });
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
     }
   }, []);
 
+  // Save to localStorage whenever data changes
   useEffect(() => {
-    if (Object.keys(allData).length > 0) {
-      localStorage.setItem('kostaTracker', JSON.stringify(allData));
+    if (mounted && Object.keys(allData).length > 0) {
+      try {
+        localStorage.setItem('kostaTracker', JSON.stringify(allData));
+      } catch (error) {
+        console.error('Error saving data:', error);
+      }
     }
-  }, [allData]);
+  }, [allData, mounted]);
 
-  const today = allData[selectedDate] || {
-    morning: { wokeOnTime: false, supplements: false, proteinShake: false },
-    work: { deepWork1: false, deepWork2: false, noSocialMedia: false },
-    meals: { proteinTarget: false, calorieTarget: false, noSnacks: false },
-    workout: { completed: false, supplements: false },
-    evening: { peptides: false, prepped: false, bedtime: false },
-    weight: currentWeight,
-    notes: ''
-  };
+  function createEmptyDay(weight) {
+    return {
+      morning: { wokeOnTime: false, supplements: false, proteinShake: false },
+      work: { deepWork1: false, deepWork2: false, noSocialMedia: false },
+      meals: { proteinTarget: false, calorieTarget: false, noSnacks: false },
+      workout: { completed: false, supplements: false },
+      evening: { peptides: false, prepped: false, bedtime: false },
+      weight: weight,
+      notes: ''
+    };
+  }
+
+  // Don't render until mounted on client
+  if (!mounted || !selectedDate) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-2xl text-gray-600">Loading your tracker...</div>
+      </div>
+    );
+  }
+
+  const today = allData[selectedDate] || createEmptyDay(currentWeight);
 
   const updateField = (category, field, value) => {
-    setAllData(prev => ({
-      ...prev,
-      [selectedDate]: {
-        ...prev[selectedDate],
-        [category]: {
-          ...prev[selectedDate]?.[category],
-          [field]: value
+    setAllData(prev => {
+      const currentDay = prev[selectedDate] || createEmptyDay(currentWeight);
+      return {
+        ...prev,
+        [selectedDate]: {
+          ...currentDay,
+          [category]: {
+            ...currentDay[category],
+            [field]: value
+          }
         }
-      }
-    }));
+      };
+    });
   };
 
   const updateWeight = (weight) => {
     setCurrentWeight(weight);
-    setAllData(prev => ({
-      ...prev,
-      [selectedDate]: {
-        ...prev[selectedDate],
-        weight: weight
-      }
-    }));
+    setAllData(prev => {
+      const currentDay = prev[selectedDate] || createEmptyDay(weight);
+      return {
+        ...prev,
+        [selectedDate]: {
+          ...currentDay,
+          weight: weight
+        }
+      };
+    });
   };
 
   const updateNotes = (notes) => {
-    setAllData(prev => ({
-      ...prev,
-      [selectedDate]: {
-        ...prev[selectedDate],
-        notes: notes
-      }
-    }));
+    setAllData(prev => {
+      const currentDay = prev[selectedDate] || createEmptyDay(currentWeight);
+      return {
+        ...prev,
+        [selectedDate]: {
+          ...currentDay,
+          notes: notes
+        }
+      };
+    });
   };
 
   const calculateScore = () => {
-    const m = today.morning;
-    const w = today.work;
-    const ml = today.meals;
-    const wo = today.workout;
-    const e = today.evening;
+    const m = today.morning || {};
+    const w = today.work || {};
+    const ml = today.meals || {};
+    const wo = today.workout || {};
+    const e = today.evening || {};
 
     let score = 0;
     if (m.wokeOnTime) score += 5;
@@ -232,9 +272,9 @@ export default function TrackerPage() {
             Morning Routine (15 pts)
           </h2>
           <div className="space-y-2">
-            <CheckboxItem label="Woke up by 6:00 AM" checked={today.morning.wokeOnTime} onChange={(e) => updateField('morning', 'wokeOnTime', e.target.checked)} points={5} />
-            <CheckboxItem label="Took all morning supplements" checked={today.morning.supplements} onChange={(e) => updateField('morning', 'supplements', e.target.checked)} points={5} />
-            <CheckboxItem label="Had Premier Protein shake" checked={today.morning.proteinShake} onChange={(e) => updateField('morning', 'proteinShake', e.target.checked)} points={5} />
+            <CheckboxItem label="Woke up by 6:00 AM" checked={today.morning?.wokeOnTime || false} onChange={(e) => updateField('morning', 'wokeOnTime', e.target.checked)} points={5} />
+            <CheckboxItem label="Took all morning supplements" checked={today.morning?.supplements || false} onChange={(e) => updateField('morning', 'supplements', e.target.checked)} points={5} />
+            <CheckboxItem label="Had Premier Protein shake" checked={today.morning?.proteinShake || false} onChange={(e) => updateField('morning', 'proteinShake', e.target.checked)} points={5} />
           </div>
         </div>
 
@@ -245,9 +285,9 @@ export default function TrackerPage() {
             Work Productivity (25 pts)
           </h2>
           <div className="space-y-2">
-            <CheckboxItem label="Deep Work Block 1 (7:00-9:00 AM)" checked={today.work.deepWork1} onChange={(e) => updateField('work', 'deepWork1', e.target.checked)} points={10} />
-            <CheckboxItem label="Deep Work Block 2 (9:15 AM-12:00 PM)" checked={today.work.deepWork2} onChange={(e) => updateField('work', 'deepWork2', e.target.checked)} points={10} />
-            <CheckboxItem label="No social media during work" checked={today.work.noSocialMedia} onChange={(e) => updateField('work', 'noSocialMedia', e.target.checked)} points={5} />
+            <CheckboxItem label="Deep Work Block 1 (7:00-9:00 AM)" checked={today.work?.deepWork1 || false} onChange={(e) => updateField('work', 'deepWork1', e.target.checked)} points={10} />
+            <CheckboxItem label="Deep Work Block 2 (9:15 AM-12:00 PM)" checked={today.work?.deepWork2 || false} onChange={(e) => updateField('work', 'deepWork2', e.target.checked)} points={10} />
+            <CheckboxItem label="No social media during work" checked={today.work?.noSocialMedia || false} onChange={(e) => updateField('work', 'noSocialMedia', e.target.checked)} points={5} />
           </div>
         </div>
 
@@ -258,9 +298,9 @@ export default function TrackerPage() {
             Nutrition (25 pts)
           </h2>
           <div className="space-y-2">
-            <CheckboxItem label="Hit 200g protein target" checked={today.meals.proteinTarget} onChange={(e) => updateField('meals', 'proteinTarget', e.target.checked)} points={10} />
-            <CheckboxItem label="Stayed within calorie target" checked={today.meals.calorieTarget} onChange={(e) => updateField('meals', 'calorieTarget', e.target.checked)} points={10} />
-            <CheckboxItem label="No unplanned snacks" checked={today.meals.noSnacks} onChange={(e) => updateField('meals', 'noSnacks', e.target.checked)} points={5} />
+            <CheckboxItem label="Hit 200g protein target" checked={today.meals?.proteinTarget || false} onChange={(e) => updateField('meals', 'proteinTarget', e.target.checked)} points={10} />
+            <CheckboxItem label="Stayed within calorie target" checked={today.meals?.calorieTarget || false} onChange={(e) => updateField('meals', 'calorieTarget', e.target.checked)} points={10} />
+            <CheckboxItem label="No unplanned snacks" checked={today.meals?.noSnacks || false} onChange={(e) => updateField('meals', 'noSnacks', e.target.checked)} points={5} />
           </div>
         </div>
 
@@ -271,8 +311,8 @@ export default function TrackerPage() {
             Workout (20 pts)
           </h2>
           <div className="space-y-2">
-            <CheckboxItem label="Completed full workout" checked={today.workout.completed} onChange={(e) => updateField('workout', 'completed', e.target.checked)} points={15} />
-            <CheckboxItem label="Took pre/post workout supplements" checked={today.workout.supplements} onChange={(e) => updateField('workout', 'supplements', e.target.checked)} points={5} />
+            <CheckboxItem label="Completed full workout" checked={today.workout?.completed || false} onChange={(e) => updateField('workout', 'completed', e.target.checked)} points={15} />
+            <CheckboxItem label="Took pre/post workout supplements" checked={today.workout?.supplements || false} onChange={(e) => updateField('workout', 'supplements', e.target.checked)} points={5} />
           </div>
         </div>
 
@@ -283,9 +323,9 @@ export default function TrackerPage() {
             Evening Routine (15 pts)
           </h2>
           <div className="space-y-2">
-            <CheckboxItem label="Took evening peptides" checked={today.evening.peptides} onChange={(e) => updateField('evening', 'peptides', e.target.checked)} points={5} />
-            <CheckboxItem label="Prepped for tomorrow" checked={today.evening.prepped} onChange={(e) => updateField('evening', 'prepped', e.target.checked)} points={5} />
-            <CheckboxItem label="In bed by 10:45 PM" checked={today.evening.bedtime} onChange={(e) => updateField('evening', 'bedtime', e.target.checked)} points={5} />
+            <CheckboxItem label="Took evening peptides" checked={today.evening?.peptides || false} onChange={(e) => updateField('evening', 'peptides', e.target.checked)} points={5} />
+            <CheckboxItem label="Prepped for tomorrow" checked={today.evening?.prepped || false} onChange={(e) => updateField('evening', 'prepped', e.target.checked)} points={5} />
+            <CheckboxItem label="In bed by 10:45 PM" checked={today.evening?.bedtime || false} onChange={(e) => updateField('evening', 'bedtime', e.target.checked)} points={5} />
           </div>
         </div>
 
@@ -293,7 +333,7 @@ export default function TrackerPage() {
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Daily Notes</h2>
           <textarea
-            value={today.notes}
+            value={today.notes || ''}
             onChange={(e) => updateNotes(e.target.value)}
             placeholder="How did you feel today?"
             className="w-full p-4 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:outline-none min-h-[100px]"
